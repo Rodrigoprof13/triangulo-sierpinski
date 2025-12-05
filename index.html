@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sierpinski Interativo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --text-color: #eee;
+            --accent-color: #00d2ff;
+            --secondary-color: #e94560;
+        }
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        h1, h2 { margin-bottom: 10px; text-align: center; }
+        
+        /* Estilos das Views */
+        .view-container {
+            display: none; /* Escondido por padrão */
+            background: rgba(255,255,255,0.05);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+        /* Classe para mostrar a view ativa */
+        .view-container.active { display: flex; }
+
+        /* Estilos da Tela Principal (Desktop) */
+        #main-view {
+            flex-direction: row;
+            gap: 40px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .canvas-container { text-align: center; }
+        canvas {
+            border: 2px solid var(--accent-color);
+            border-radius: 8px;
+            background: #000;
+            box-shadow: 0 0 15px rgba(0, 210, 255, 0.3);
+        }
+        .qr-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+        }
+        #qrcode {
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+        }
+        .sim-btn {
+            margin-top: 10px;
+            padding: 8px 15px;
+            background: var(--secondary-color);
+            border: none;
+            color: white;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+
+        /* Estilos da Tela Interativa (Mobile) */
+        #interactive-view {
+            flex-direction: column;
+            align-items: center;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .level-btn {
+            padding: 10px 20px;
+            font-size: 1.2em;
+            background-color: #333;
+            color: var(--text-color);
+            border: 2px solid var(--accent-color);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .level-btn:hover { background-color: var(--accent-color); color: #000; }
+        .level-btn.active {
+            background-color: var(--accent-color);
+            color: #000;
+            box-shadow: 0 0 10px var(--accent-color);
+        }
+
+        @media (max-width: 800px) {
+            #main-view { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="main-view" class="view-container">
+        <div class="canvas-container">
+            <h2>Triângulo de Sierpinski Completo</h2>
+            <canvas id="staticCanvas" width="500" height="450"></canvas>
+        </div>
+        <div class="qr-section">
+            <h2>Escaneie para Interagir</h2>
+            <div id="qrcode"></div>
+            <p>Abra no celular para ver passo a passo.</p>
+            <button class="sim-btn" onclick="window.location.href = window.location.pathname + '?mode=interactive'">Simular Escaneamento no Celular</button>
+        </div>
+    </div>
+
+    <div id="interactive-view" class="view-container">
+        <h2>Construção Interativa</h2>
+        <p>Toque nos números para aumentar as iterações.</p>
+        <canvas id="interactiveCanvas" width="500" height="450"></canvas>
+        <div class="controls" id="buttonContainer">
+            </div>
+        <button class="sim-btn" style="margin-top: 20px; background: #555;" onclick="window.location.href = window.location.pathname">Voltar para Tela Principal</button>
+    </div>
+
+
+<script>
+    // === Configurações Gerais ===
+    const maxInteractiveLevels = 7; // Quantos botões de nível vamos gerar
+    const staticDepth = 8; // Profundidade do triângulo estático na tela principal
+    
+    // Cores para os níveis (opcional, para ficar bonito)
+    const levelColors = ['#FF5733', '#FFC300', '#DAF7A6', '#33FF57', '#3375FF', '#C70039', '#900C3F', '#581845'];
+
+
+    // === Funções Geométricas Compartilhadas ===
+    function getMidpoint(p1, p2) {
+        return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    }
+
+    // Função recursiva principal
+    function drawSierpinskiRecursive(ctx, p1, p2, p3, currentDepth, targetDepth) {
+        // Se chegamos na profundidade alvo, desenhamos o triângulo e paramos.
+        // No nível 1, ele desenha o triângulo principal.
+        // Nos níveis seguintes, desenha os menores.
+        if (currentDepth === targetDepth) {
+            ctx.fillStyle = levelColors[(currentDepth -1) % levelColors.length];
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.lineTo(p3.x, p3.y);
+            ctx.closePath();
+            ctx.fill();
+            return;
+        }
+
+        // Passo recursivo: calcular pontos médios
+        const m12 = getMidpoint(p1, p2);
+        const m23 = getMidpoint(p2, p3);
+        const m31 = getMidpoint(p3, p1);
+
+        // Chama a função para os 3 subtriângulos externos, incrementando a profundidade atual
+        drawSierpinskiRecursive(ctx, p1, m12, m31, currentDepth + 1, targetDepth);
+        drawSierpinskiRecursive(ctx, m12, p2, m23, currentDepth + 1, targetDepth);
+        drawSierpinskiRecursive(ctx, m31, m23, p3, currentDepth + 1, targetDepth);
+    }
+
+    // Função auxiliar para configurar o canvas e iniciar o desenho
+    function setupAndDraw(canvasId, targetDepth) {
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+
+        // Limpa o canvas
+        ctx.clearRect(0, 0, w, h);
+
+        // Define os vértices do triângulo principal
+        const padding = 20;
+        const side = Math.min(w, h) - padding * 2;
+        const heightTriangle = side * (Math.sqrt(3) / 2);
+        
+        const p1 = { x: w / 2, y: padding }; // Topo
+        const p2 = { x: (w - side) / 2, y: padding + heightTriangle }; // Inferior esquerdo
+        const p3 = { x: (w + side) / 2, y: padding + heightTriangle }; // Inferior direito
+
+        // Inicia o processo recursivo começando do nível 1
+        drawSierpinskiRecursive(ctx, p1, p2, p3, 1, targetDepth);
+    }
+
+
+    // === Lógica da Aplicação ===
+
+    function initApp() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const mode = urlParams.get('mode');
+
+        if (mode === 'interactive') {
+            // --- Modo Interativo (Mobile) ---
+            document.getElementById('interactive-view').classList.add('active');
+            setupInteractiveView();
+        } else {
+            // --- Modo Principal (Desktop) ---
+            document.getElementById('main-view').classList.add('active');
+            setupMainView();
+        }
+    }
+
+    // Configuração da Tela Principal
+    function setupMainView() {
+        // 1. Desenha o triângulo estático
+        setupAndDraw('staticCanvas', staticDepth);
+
+        // 2. Gera o QR Code
+        // O link aponta para a URL atual + ?mode=interactive
+        const interactiveURL = window.location.href.split('?')[0] + '?mode=interactive';
+        
+        const qrcodeContainer = document.getElementById("qrcode");
+        // Limpa caso já exista
+        qrcodeContainer.innerHTML = "";
+        new QRCode(qrcodeContainer, {
+            text: interactiveURL,
+            width: 180,
+            height: 180,
+            colorDark : "#000000",
+            colorLight : "#ffffff",
+            correctLevel : QRCode.CorrectLevel.H
+        });
+        console.log("QR Code gerado para:", interactiveURL);
+    }
+
+    // Configuração da Tela Interativa
+    function setupInteractiveView() {
+        const buttonContainer = document.getElementById('buttonContainer');
+        let currentActiveDepth = 1;
+
+        // Ajusta tamanho do canvas para mobile se necessário
+        const interactiveCanvas = document.getElementById('interactiveCanvas');
+        if (window.innerWidth < 550) {
+            interactiveCanvas.width = window.innerWidth - 40;
+            interactiveCanvas.height = interactiveCanvas.width * 0.9;
+        }
+
+        // Desenha o estado inicial (Nível 1 - Triângulo Equilátero)
+        setupAndDraw('interactiveCanvas', 1);
+
+        // Gera os botões
+        for (let i = 1; i <= maxInteractiveLevels; i++) {
+            const btn = document.createElement('button');
+            btn.innerText = i;
+            btn.className = 'level-btn';
+            if (i === 1) btn.classList.add('active');
+
+            btn.onclick = function() {
+                // Atualiza visual dos botões
+                document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                currentActiveDepth = i;
+                // Redesenha o canvas com a nova profundidade alvo
+                setupAndDraw('interactiveCanvas', currentActiveDepth);
+            };
+
+            buttonContainer.appendChild(btn);
+        }
+    }
+
+    // Inicializa tudo quando a página carrega
+    window.addEventListener('load', initApp);
+    // Redimensiona se a tela mudar (opcional, para melhorar experiência em tablets/rotação)
+    window.addEventListener('resize', () => {
+         // Um reload simples para ajustar os canvas se a orientação mudar drasticamente
+         if(document.getElementById('interactive-view').classList.contains('active')) {
+            location.reload();
+         }
+    });
+
+</script>
+</body>
+</html>
